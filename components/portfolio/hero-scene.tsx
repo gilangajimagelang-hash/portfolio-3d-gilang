@@ -1,351 +1,336 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import {
-  Edges,
-  Environment,
-  Float,
-  Lightformer,
-  MeshTransmissionMaterial,
-  PerformanceMonitor,
-  Sparkles,
-} from '@react-three/drei'
 import * as THREE from 'three'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Canvas, extend, useFrame, useThree, type ThreeElement, type ThreeEvent } from '@react-three/fiber'
+import { Environment, Lightformer, useTexture } from '@react-three/drei'
+import {
+  BallCollider,
+  CuboidCollider,
+  Physics,
+  RigidBody,
+  useRopeJoint,
+  useSphericalJoint,
+  type RapierRigidBody,
+  type RigidBodyProps,
+} from '@react-three/rapier'
+import { MeshLineGeometry, MeshLineMaterial } from 'meshline'
 
-type Quality = 'high' | 'low'
-type Pointer = { x: number; y: number }
+extend({ MeshLineGeometry, MeshLineMaterial })
 
-export type HeroSceneProps = {
+declare module '@react-three/fiber' {
+  interface ThreeElements {
+    meshLineGeometry: ThreeElement<typeof MeshLineGeometry>
+    meshLineMaterial: ThreeElement<typeof MeshLineMaterial>
+  }
+}
+
+const CARD_W = 1.6
+const CARD_H = 2.56
+const HOLDER_W = 1.74
+const HOLDER_H = 2.8
+const ANCHOR_Y = 1.58
+
+type HeroSceneProps = {
   reducedMotion: boolean
   compact: boolean
   active: boolean
   onContextLost: () => void
 }
 
-const damp = THREE.MathUtils.damp
+export default function HeroScene({ reducedMotion, compact, active, onContextLost }: HeroSceneProps) {
+  return (
+    <Canvas
+      className="!touch-none"
+      camera={{ position: [0, 0, compact ? 14.5 : 13], fov: 25 }}
+      dpr={compact ? [1, 1.5] : [1, 2]}
+      frameloop={active ? 'always' : 'never'}
+      gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
+      onCreated={({ gl }) => {
+        gl.domElement.addEventListener('webglcontextlost', onContextLost, { once: true })
+      }}
+      aria-label="Interactive 3D name card for Gilang. Drag the card to swing it on its lanyard."
+      role="img"
+    >
+      <ambientLight intensity={Math.PI * 0.6} />
+      <directionalLight position={[3, 5, 6]} intensity={2.2} />
+      <Suspense fallback={null}>
+        <Physics gravity={[0, -40, 0]} timeStep={1 / 60} paused={!active}>
+          <Lanyard reducedMotion={reducedMotion} compact={compact} />
+        </Physics>
+      </Suspense>
+      <Environment resolution={compact ? 64 : 256} frames={1}>
+        <color attach="background" args={['#050816']} />
+        <Lightformer intensity={2} color="white" position={[0, -1, 5]} rotation={[0, 0, Math.PI / 3]} scale={[100, 0.1, 1]} />
+        <Lightformer intensity={3} color="#9fdcff" position={[-1, -1, 1]} rotation={[0, 0, Math.PI / 3]} scale={[100, 0.1, 1]} />
+        <Lightformer intensity={3} color="white" position={[1, 1, 1]} rotation={[0, 0, Math.PI / 3]} scale={[100, 0.1, 1]} />
+        <Lightformer intensity={8} color="#3b82ff" position={[-10, 0, 14]} rotation={[0, Math.PI / 2, Math.PI / 3]} scale={[100, 10, 1]} />
+      </Environment>
+    </Canvas>
+  )
+}
 
-function useWindowPointer(enabled: boolean) {
-  const pointer = useRef<Pointer>({ x: 0, y: 0 })
+const segmentProps: RigidBodyProps = {
+  type: 'dynamic',
+  canSleep: true,
+  colliders: false,
+  angularDamping: 2,
+  linearDamping: 2,
+}
+
+function useStrapTexture() {
+  return useMemo(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 1024
+    canvas.height = 128
+    const ctx = canvas.getContext('2d')
+    if (ctx) {
+      ctx.fillStyle = '#eef3fb'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.fillStyle = '#16306b'
+      ctx.fillRect(0, 0, canvas.width, 10)
+      ctx.fillRect(0, canvas.height - 10, canvas.width, 10)
+      ctx.font = '800 54px system-ui, sans-serif'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('GILANG  //  HUMAS  //  STMIK BINA PATRIA  //', 24, canvas.height / 2 + 2)
+    }
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping
+    texture.anisotropy = 8
+    return texture
+  }, [])
+}
+
+function useCardBackTexture() {
+  return useMemo(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 640
+    canvas.height = 1024
+    const ctx = canvas.getContext('2d')
+    if (ctx) {
+      const gradient = ctx.createLinearGradient(0, 0, 640, 1024)
+      gradient.addColorStop(0, '#0e4f86')
+      gradient.addColorStop(1, '#0a1f45')
+      ctx.fillStyle = gradient
+      ctx.fillRect(0, 0, 640, 1024)
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+      for (let x = 0; x <= 640; x += 40) {
+        ctx.beginPath()
+        ctx.moveTo(x, 0)
+        ctx.lineTo(x, 1024)
+        ctx.stroke()
+      }
+      ctx.fillStyle = '#ffffff'
+      ctx.textAlign = 'center'
+      ctx.font = '600 34px system-ui, sans-serif'
+      ctx.fillText('HIMTI', 320, 330)
+      ctx.font = '800 52px system-ui, sans-serif'
+      ctx.fillText('STMIK BINA PATRIA', 320, 400)
+      ctx.font = 'italic 400 28px system-ui, sans-serif'
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'
+      ctx.fillText('Kabinet Pranava vox academia', 320, 450)
+      ctx.fillStyle = '#ffffff'
+      ctx.font = '800 96px system-ui, sans-serif'
+      ctx.fillText('GILANG', 320, 690)
+      ctx.font = '600 34px system-ui, sans-serif'
+      ctx.fillStyle = '#9fdcff'
+      ctx.fillText('HUMAS', 320, 750)
+    }
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.anisotropy = 8
+    return texture
+  }, [])
+}
+
+function Lanyard({ reducedMotion, compact }: { reducedMotion: boolean; compact: boolean }) {
+  const band = useRef<THREE.Mesh<MeshLineGeometry, MeshLineMaterial>>(null)
+  const fixed = useRef<RapierRigidBody>(null!)
+  const j1 = useRef<RapierRigidBody>(null!)
+  const j2 = useRef<RapierRigidBody>(null!)
+  const j3 = useRef<RapierRigidBody>(null!)
+  const card = useRef<RapierRigidBody>(null!)
+
+  const [vec] = useState(() => new THREE.Vector3())
+  const [ang] = useState(() => new THREE.Vector3())
+  const [rot] = useState(() => new THREE.Vector3())
+  const [dir] = useState(() => new THREE.Vector3())
+  const [lerped] = useState(() => [new THREE.Vector3(), new THREE.Vector3()])
+  const lerpReady = useRef(false)
+
+  const [curve] = useState(() => {
+    const c = new THREE.CatmullRomCurve3([new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()])
+    c.curveType = 'chordal'
+    return c
+  })
+
+  const { width, height } = useThree((state) => state.size)
+  const [dragged, setDragged] = useState<THREE.Vector3 | false>(false)
+  const [hovered, setHovered] = useState(false)
+
+  const front = useTexture('/images/name-card.jpg', (t) => {
+    t.colorSpace = THREE.SRGBColorSpace
+    t.anisotropy = 8
+  })
+  const back = useCardBackTexture()
+  const strap = useStrapTexture()
+
+  useRopeJoint(fixed, j1, [[0, 0, 0], [0, 0, 0], 1])
+  useRopeJoint(j1, j2, [[0, 0, 0], [0, 0, 0], 1])
+  useRopeJoint(j2, j3, [[0, 0, 0], [0, 0, 0], 1])
+  useSphericalJoint(j3, card, [[0, 0, 0], [0, ANCHOR_Y, 0]])
+
   useEffect(() => {
-    if (!enabled) return
-    const onMove = (e: PointerEvent) => {
-      pointer.current.x = (e.clientX / window.innerWidth) * 2 - 1
-      pointer.current.y = -((e.clientY / window.innerHeight) * 2 - 1)
+    if (!hovered) return
+    document.body.style.cursor = dragged ? 'grabbing' : 'grab'
+    return () => {
+      document.body.style.cursor = 'auto'
     }
-    window.addEventListener('pointermove', onMove, { passive: true })
-    return () => window.removeEventListener('pointermove', onMove)
-  }, [enabled])
-  return pointer
-}
-
-function CameraRig({
-  pointer,
-  reducedMotion,
-  baseZ,
-}: {
-  pointer: RefObject<Pointer>
-  reducedMotion: boolean
-  baseZ: number
-}) {
-  const camera = useThree((s) => s.camera)
+  }, [hovered, dragged])
 
   useFrame((state, delta) => {
-    if (reducedMotion) return
-    const t = state.clock.elapsedTime
-    const p = pointer.current
-    const tx = p.x * 0.8 + Math.sin(t * 0.13) * 0.3
-    const ty = p.y * 0.5 + Math.cos(t * 0.11) * 0.18
-    const tz = baseZ + Math.sin(t * 0.09) * 0.25
-    camera.position.x = damp(camera.position.x, tx, 1.4, delta)
-    camera.position.y = damp(camera.position.y, ty, 1.4, delta)
-    camera.position.z = damp(camera.position.z, tz, 0.9, delta)
-    camera.lookAt(0, 0, 0)
+    if (!fixed.current || !j1.current || !j2.current || !j3.current || !card.current || !band.current) return
+
+    if (dragged) {
+      vec.set(state.pointer.x, state.pointer.y, 0.5).unproject(state.camera)
+      dir.copy(vec).sub(state.camera.position).normalize()
+      vec.add(dir.multiplyScalar(state.camera.position.length()))
+      ;[card, j1, j2, j3, fixed].forEach((ref) => ref.current?.wakeUp())
+      card.current.setNextKinematicTranslation({
+        x: vec.x - dragged.x,
+        y: vec.y - dragged.y,
+        z: vec.z - dragged.z,
+      })
+    }
+
+    const joints = [j1.current, j2.current]
+    if (!lerpReady.current) {
+      joints.forEach((joint, i) => lerped[i].copy(joint.translation()))
+      lerpReady.current = true
+    }
+    joints.forEach((joint, i) => {
+      const target = joint.translation()
+      const distance = Math.max(0.1, Math.min(1, lerped[i].distanceTo(target)))
+      lerped[i].lerp(target, Math.min(1, delta * (10 + distance * 40)))
+    })
+
+    curve.points[0].copy(j3.current.translation())
+    curve.points[1].copy(lerped[1])
+    curve.points[2].copy(lerped[0])
+    curve.points[3].copy(fixed.current.translation())
+    band.current.geometry.setPoints(curve.getPoints(compact ? 24 : 32))
+
+    ang.copy(card.current.angvel())
+    const q = card.current.rotation()
+    rot.set(q.x, q.y, q.z)
+    card.current.setAngvel({ x: ang.x, y: ang.y - rot.y * 0.25, z: ang.z }, true)
   })
 
-  return null
-}
+  const start = reducedMotion
+    ? { j1: [0, -1, 0], j2: [0, -2, 0], j3: [0, -3, 0], card: [0, -3 - ANCHOR_Y, 0] }
+    : { j1: [0.5, 0, 0], j2: [1, 0, 0], j3: [1.5, 0, 0], card: [2, 0, 0] }
 
-function GlassMaterial({ quality }: { quality: Quality }) {
-  if (quality === 'low') {
-    return (
-      <meshPhysicalMaterial
-        color="#d6ecff"
-        transmission={1}
-        thickness={0.8}
-        roughness={0.06}
-        ior={1.45}
-        metalness={0}
-        clearcoat={1}
-        envMapIntensity={1.6}
-        transparent
-      />
-    )
+  const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation()
+    ;(e.target as unknown as Element).setPointerCapture(e.pointerId)
+    if (card.current) setDragged(new THREE.Vector3().copy(e.point).sub(vec.copy(card.current.translation())))
   }
-  return (
-    <MeshTransmissionMaterial
-      backside
-      backsideThickness={0.35}
-      samples={6}
-      resolution={512}
-      thickness={0.7}
-      roughness={0.04}
-      transmission={1}
-      ior={1.42}
-      chromaticAberration={0.08}
-      anisotropicBlur={0.12}
-      distortion={0.12}
-      distortionScale={0.35}
-      temporalDistortion={0.08}
-      color="#e3f3ff"
-      attenuationColor="#9fdcff"
-      attenuationDistance={2.4}
-      envMapIntensity={1.4}
-    />
-  )
-}
 
-function Satellite({
-  radius,
-  speed,
-  color,
-  size,
-  tilt,
-  reducedMotion,
-}: {
-  radius: number
-  speed: number
-  color: string
-  size: number
-  tilt: [number, number, number]
-  reducedMotion: boolean
-}) {
-  const pivot = useRef<THREE.Group>(null)
-  useFrame((_, delta) => {
-    if (!reducedMotion && pivot.current) pivot.current.rotation.z += delta * speed
-  })
-  return (
-    <group rotation={tilt}>
-      <mesh>
-        <torusGeometry args={[radius, 0.006, 12, 220]} />
-        <meshBasicMaterial color={color} transparent opacity={0.55} toneMapped={false} />
-      </mesh>
-      <group ref={pivot}>
-        <mesh position={[radius, 0, 0]}>
-          <sphereGeometry args={[size, 24, 24]} />
-          <meshBasicMaterial color={color} toneMapped={false} />
-        </mesh>
-        <pointLight position={[radius, 0, 0]} color={color} intensity={2.5} distance={2.5} />
-      </group>
-    </group>
-  )
-}
+  const onPointerUp = (e: ThreeEvent<PointerEvent>) => {
+    ;(e.target as unknown as Element).releasePointerCapture(e.pointerId)
+    setDragged(false)
+  }
 
-function Artifact({
-  pointer,
-  reducedMotion,
-  quality,
-  compact,
-}: {
-  pointer: RefObject<Pointer>
-  reducedMotion: boolean
-  quality: Quality
-  compact: boolean
-}) {
-  const tilt = useRef<THREE.Group>(null)
-  const crystal = useRef<THREE.Mesh>(null)
-  const core = useRef<THREE.Mesh>(null)
-  const hovered = useRef(false)
-  const spin = useRef(0)
-
-  useFrame((state, delta) => {
-    const p = pointer.current
-    const g = tilt.current
-    if (g) {
-      g.rotation.x = damp(g.rotation.x, p.y * -0.3, 2.5, delta)
-      g.rotation.y = damp(g.rotation.y, p.x * 0.45, 2.5, delta)
-      const targetScale = hovered.current ? 1.06 : 1
-      g.scale.setScalar(damp(g.scale.x, targetScale, 4, delta))
-    }
-    if (reducedMotion) return
-
-    spin.current = damp(spin.current, hovered.current ? 1.2 : 0.18, 2, delta)
-    if (crystal.current) {
-      crystal.current.rotation.y += delta * spin.current
-      crystal.current.rotation.x += delta * spin.current * 0.35
-    }
-    if (core.current) {
-      core.current.rotation.y -= delta * 0.4
-      const pulse = 1 + Math.sin(state.clock.elapsedTime * 1.4) * 0.025
-      core.current.scale.setScalar(pulse)
-    }
-  })
-
-  return (
-    <group ref={tilt} scale={1}>
-      <Float
-        speed={reducedMotion ? 0 : 1.2}
-        rotationIntensity={reducedMotion ? 0 : 0.25}
-        floatIntensity={reducedMotion ? 0 : 0.6}
-      >
-        <group scale={compact ? 0.82 : 1}>
-          <mesh ref={core}>
-            <sphereGeometry args={[0.58, 64, 64]} />
-            <meshPhysicalMaterial
-              color="#0a1838"
-              metalness={1}
-              roughness={0.08}
-              clearcoat={1}
-              clearcoatRoughness={0.05}
-              iridescence={1}
-              iridescenceIOR={1.7}
-              iridescenceThicknessRange={[200, 900]}
-              envMapIntensity={2.2}
-            />
-          </mesh>
-          <pointLight color="#22d3ee" intensity={6} distance={3} />
-
-          <mesh
-            ref={crystal}
-            onPointerOver={() => {
-              hovered.current = true
-              document.body.style.cursor = 'grab'
-            }}
-            onPointerOut={() => {
-              hovered.current = false
-              document.body.style.cursor = ''
-            }}
-          >
-            <icosahedronGeometry args={[1.35, 0]} />
-            <GlassMaterial quality={quality} />
-            <Edges threshold={15} color="#7fe3ff" transparent opacity={0.35} />
-          </mesh>
-
-          <Satellite
-            radius={2.05}
-            speed={0.45}
-            color="#22d3ee"
-            size={0.055}
-            tilt={[Math.PI / 2.3, 0.2, 0]}
-            reducedMotion={reducedMotion}
-          />
-          <Satellite
-            radius={2.5}
-            speed={-0.28}
-            color="#8b5cf6"
-            size={0.04}
-            tilt={[Math.PI / 1.8, -0.5, 0.3]}
-            reducedMotion={reducedMotion}
-          />
-        </group>
-      </Float>
-    </group>
-  )
-}
-
-function Starfield({ count, reducedMotion }: { count: number; reducedMotion: boolean }) {
-  const points = useRef<THREE.Points>(null)
-
-  const positions = useMemo(() => {
-    const arr = new Float32Array(count * 3)
-    for (let i = 0; i < count; i++) {
-      const r = 3.5 + Math.random() * 4
-      const theta = Math.random() * Math.PI * 2
-      const phi = Math.acos(2 * Math.random() - 1)
-      arr[i * 3] = r * Math.sin(phi) * Math.cos(theta)
-      arr[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta)
-      arr[i * 3 + 2] = r * Math.cos(phi)
-    }
-    return arr
-  }, [count])
-
-  useFrame((_, delta) => {
-    if (!points.current || reducedMotion) return
-    points.current.rotation.y += delta * 0.015
-  })
-
-  return (
-    <points ref={points}>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
-      </bufferGeometry>
-      <pointsMaterial
-        size={0.022}
-        color="#9fdcff"
-        transparent
-        opacity={0.55}
-        sizeAttenuation
-        depthWrite={false}
-      />
-    </points>
-  )
-}
-
-function Lighting() {
   return (
     <>
-      <ambientLight intensity={0.25} />
-      <spotLight
-        position={[5, 6, 5]}
-        angle={0.45}
-        penumbra={1}
-        intensity={120}
-        color="#cfe6ff"
-        decay={2}
-      />
-      <pointLight position={[-5, -2, 2]} intensity={45} color="#8b5cf6" />
-      <pointLight position={[0, -4, -3]} intensity={35} color="#22d3ee" />
+      <group position={[0, 4.2, 0]}>
+        <RigidBody ref={fixed} {...segmentProps} type="fixed" />
+        <RigidBody position={start.j1 as [number, number, number]} ref={j1} {...segmentProps}>
+          <BallCollider args={[0.1]} />
+        </RigidBody>
+        <RigidBody position={start.j2 as [number, number, number]} ref={j2} {...segmentProps}>
+          <BallCollider args={[0.1]} />
+        </RigidBody>
+        <RigidBody position={start.j3 as [number, number, number]} ref={j3} {...segmentProps}>
+          <BallCollider args={[0.1]} />
+        </RigidBody>
+        <RigidBody
+          position={start.card as [number, number, number]}
+          ref={card}
+          {...segmentProps}
+          type={dragged ? 'kinematicPosition' : 'dynamic'}
+        >
+          <CuboidCollider args={[HOLDER_W / 2, HOLDER_H / 2, 0.02]} />
+          <group
+            onPointerOver={() => setHovered(true)}
+            onPointerOut={() => setHovered(false)}
+            onPointerDown={onPointerDown}
+            onPointerUp={onPointerUp}
+          >
+            <Card front={front} back={back} />
+          </group>
+        </RigidBody>
+      </group>
 
-      <Environment resolution={256} frames={1}>
-        <Lightformer form="rect" intensity={5} color="#ffffff" position={[0, 5, -2]} rotation-x={Math.PI / 2} scale={[10, 1.2, 1]} />
-        <Lightformer form="rect" intensity={4} color="#3b82ff" position={[5, 1, 2]} scale={[3, 6, 1]} />
-        <Lightformer form="rect" intensity={3} color="#22d3ee" position={[-5, 0, 1]} scale={[2.5, 5, 1]} />
-        <Lightformer form="ring" intensity={2.5} color="#8b5cf6" position={[0, -3, 4]} scale={2.5} />
-        <Lightformer form="rect" intensity={1.5} color="#ffffff" position={[-3, 3, 5]} scale={[1, 4, 1]} />
-      </Environment>
+      <mesh ref={band}>
+        <meshLineGeometry />
+        <meshLineMaterial
+          args={[{ resolution: new THREE.Vector2(width, height) }]}
+          color="white"
+          depthTest={false}
+          resolution={[width, height]}
+          useMap={1}
+          map={strap}
+          repeat={[-4, 1]}
+          lineWidth={compact ? 0.9 : 1}
+        />
+      </mesh>
     </>
   )
 }
 
-export default function HeroScene({ reducedMotion, compact, active, onContextLost }: HeroSceneProps) {
-  const [quality, setQuality] = useState<Quality>(compact ? 'low' : 'high')
-  const pointer = useWindowPointer(!reducedMotion)
-  const baseZ = compact ? 7 : 6.4
-  const maxDpr = quality === 'high' ? 1.75 : 1.25
-
+function Card({ front, back }: { front: THREE.Texture; back: THREE.Texture }) {
   return (
-    <Canvas
-      dpr={[1, maxDpr]}
-      camera={{ position: [0, reducedMotion ? 0 : 0.8, reducedMotion ? baseZ : baseZ + 4], fov: 42 }}
-      gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-      frameloop={active && !reducedMotion ? 'always' : 'demand'}
-      onCreated={({ gl }) => {
-        gl.toneMapping = THREE.ACESFilmicToneMapping
-        gl.toneMappingExposure = 1.1
-        gl.domElement.addEventListener('webglcontextlost', (e) => {
-          e.preventDefault()
-          onContextLost()
-        })
-      }}
-      aria-hidden="true"
-    >
-      <PerformanceMonitor
-        flipflops={2}
-        onDecline={() => setQuality('low')}
-        onFallback={() => setQuality('low')}
-      />
-      <CameraRig pointer={pointer} reducedMotion={reducedMotion} baseZ={baseZ} />
-      <Lighting />
-      <Artifact pointer={pointer} reducedMotion={reducedMotion} quality={quality} compact={compact} />
-      <Sparkles
-        count={compact ? 30 : 70}
-        scale={[7, 5, 5]}
-        size={compact ? 2 : 2.6}
-        speed={reducedMotion ? 0 : 0.25}
-        opacity={0.7}
-        color="#9fdcff"
-      />
-      <Starfield count={compact ? 250 : 600} reducedMotion={reducedMotion} />
-    </Canvas>
+    <group>
+      <mesh position={[0, 0, 0.006]}>
+        <planeGeometry args={[CARD_W, CARD_H]} />
+        <meshPhysicalMaterial map={front} roughness={0.45} clearcoat={0.6} clearcoatRoughness={0.25} />
+      </mesh>
+      <mesh position={[0, 0, -0.006]} rotation={[0, Math.PI, 0]}>
+        <planeGeometry args={[CARD_W, CARD_H]} />
+        <meshPhysicalMaterial map={back} roughness={0.45} clearcoat={0.6} clearcoatRoughness={0.25} />
+      </mesh>
+
+      <mesh position={[0, 0.1, 0]} renderOrder={2}>
+        <boxGeometry args={[HOLDER_W, HOLDER_H, 0.045]} />
+        <meshPhysicalMaterial
+          color="#dbe9ff"
+          transparent
+          opacity={0.16}
+          roughness={0.04}
+          metalness={0}
+          clearcoat={1}
+          clearcoatRoughness={0.03}
+          envMapIntensity={2.5}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh position={[0, HOLDER_H / 2 - 0.02, 0]} renderOrder={3}>
+        <boxGeometry args={[0.42, 0.07, 0.05]} />
+        <meshStandardMaterial color="#050816" transparent opacity={0.55} />
+      </mesh>
+
+      <group position={[0, ANCHOR_Y - 0.06, 0]}>
+        <mesh>
+          <torusGeometry args={[0.09, 0.022, 12, 32]} />
+          <meshStandardMaterial color="#d4d8e0" metalness={1} roughness={0.22} />
+        </mesh>
+        <mesh position={[0, -0.12, 0]}>
+          <boxGeometry args={[0.1, 0.12, 0.04]} />
+          <meshStandardMaterial color="#c3c8d2" metalness={1} roughness={0.28} />
+        </mesh>
+      </group>
+    </group>
   )
 }

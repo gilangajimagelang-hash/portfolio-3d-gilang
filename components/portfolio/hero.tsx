@@ -90,7 +90,7 @@ export function Hero() {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 1.4, delay: 1, ease }}
-          className="relative order-1 h-[320px] sm:h-[420px] lg:order-2 lg:h-[600px]"
+          className="relative order-1 -mt-28 h-[460px] sm:h-[520px] md:-mt-24 lg:order-2 lg:h-[calc(100svh-4rem)] lg:max-h-[760px]"
         >
           <HeroVisual />
         </motion.div>

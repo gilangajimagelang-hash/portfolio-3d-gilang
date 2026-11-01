@@ -1,6 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import Image from 'next/image'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useReducedMotion } from 'motion/react'
 
@@ -11,13 +12,18 @@ const HeroScene = dynamic(() => import('./hero-scene'), {
 
 function FallbackOrb() {
   return (
-    <div className="flex size-full items-center justify-center" aria-hidden="true">
-      <div className="relative aspect-square w-[min(62%,20rem)]">
-        <div className="absolute -inset-[30%] rounded-full bg-primary/25 blur-3xl" />
-        <div className="absolute inset-0 rotate-45 rounded-[28%] border border-white/15 bg-[linear-gradient(140deg,rgb(255_255_255/0.18),rgb(159_220_255/0.05)_45%,rgb(139_92_246/0.12))] shadow-[inset_0_1px_0_rgb(255_255_255/0.3),0_0_80px_rgb(34_211_238/0.25)] backdrop-blur-md" />
-        <div className="absolute inset-[30%] rounded-full bg-[radial-gradient(circle_at_30%_30%,#cfe9ff_0%,#3b82ff_35%,#0a1838_75%)] shadow-[0_0_60px_rgb(34_211_238/0.5)]" />
-        <div className="absolute -inset-[22%] rounded-full border border-neon/30 [transform:rotateX(72deg)]" />
-        <div className="absolute -inset-[36%] rounded-full border border-violet/25 [transform:rotateX(76deg)_rotateY(18deg)]" />
+    <div className="flex size-full flex-col items-center" aria-hidden="true">
+      <div className="h-[28%] w-5 bg-[repeating-linear-gradient(180deg,#eef3fb_0_28px,#16306b_28px_32px)] shadow-[0_0_30px_rgb(59_130_255/0.35)]" />
+      <div className="-mt-1 size-5 rounded-full border-4 border-zinc-300" />
+      <div className="relative mt-1 aspect-[0.625] h-[58%] -rotate-3 overflow-hidden rounded-xl border border-white/30 bg-white/10 p-1.5 shadow-[0_30px_80px_rgb(0_0_0/0.5),0_0_60px_rgb(34_211_238/0.25)] backdrop-blur-sm">
+        <Image
+          src="/images/name-card.jpg"
+          alt=""
+          fill
+          sizes="240px"
+          className="rounded-lg object-cover p-1.5"
+          priority
+        />
       </div>
     </div>
   )
@@ -81,6 +87,11 @@ export function HeroVisual() {
         />
       ) : (
         <FallbackOrb />
+      )}
+      {webgl && !contextLost && (
+        <p className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-white/10 bg-background/40 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.25em] text-muted-foreground backdrop-blur">
+          Drag the card
+        </p>
       )}
     </div>
   )
