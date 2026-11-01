@@ -1,4 +1,3 @@
-
 'use client'
 
 import { AnimatePresence, motion, useMotionValueEvent, useScroll } from 'motion/react'
@@ -16,15 +15,9 @@ export function Navbar() {
 
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : ''
-
     if (!open) return
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false)
-    }
-
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
     window.addEventListener('keydown', onKey)
-
     return () => {
       window.removeEventListener('keydown', onKey)
       document.body.style.overflow = ''
@@ -32,26 +25,16 @@ export function Navbar() {
   }, [open])
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 px-3 pt-3 sm:px-4 sm:pt-4 md:px-6">
+    <header className="fixed inset-x-0 top-0 z-50 px-4 pt-4 md:px-6">
       <nav
         aria-label="Main navigation"
         className={cn(
-          'mx-auto flex w-full max-w-6xl items-center justify-between rounded-full px-4 py-3 sm:px-5',
-          'transition-all duration-500',
-          scrolled
-            ? 'glass shadow-[0_8px_40px_rgb(0_0_0/0.5)]'
-            : 'border border-transparent',
+          'mx-auto flex max-w-6xl items-center justify-between rounded-full px-5 py-3 transition-all duration-500',
+          scrolled ? 'glass shadow-[0_8px_40px_rgb(0_0_0/0.5)]' : 'border border-transparent',
         )}
       >
-        <a
-          href="#home"
-          onClick={() => setOpen(false)}
-          className="flex shrink-0 items-center gap-2 font-mono text-xs font-semibold tracking-[0.25em] sm:text-sm sm:tracking-[0.35em]"
-        >
-          <span
-            className="size-2 rounded-full bg-neon shadow-[0_0_12px_#22d3ee]"
-            aria-hidden="true"
-          />
+        <a href="#home" className="flex items-center gap-2 font-mono text-sm font-semibold tracking-[0.35em]">
+          <span className="size-2 rounded-full bg-neon shadow-[0_0_12px_#22d3ee]" aria-hidden="true" />
           GILANG
         </a>
 
@@ -78,7 +61,7 @@ export function Navbar() {
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="relative z-[60] inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-white/10 transition-colors hover:bg-white/10 md:hidden"
+          className="relative z-50 inline-flex size-10 items-center justify-center rounded-full border border-white/10 md:hidden"
           aria-expanded={open}
           aria-controls="mobile-menu"
           aria-label={open ? 'Close menu' : 'Open menu'}
@@ -88,16 +71,16 @@ export function Navbar() {
       </nav>
 
       <AnimatePresence>
-        {open && (
+        {open ? (
           <motion.div
             id="mobile-menu"
-            className="fixed inset-0 z-50 flex min-h-dvh flex-col justify-center overflow-y-auto bg-background/95 px-6 pb-10 pt-24 backdrop-blur-xl md:hidden sm:px-8"
+            className="fixed inset-0 z-40 flex flex-col justify-center bg-background/95 px-8 backdrop-blur-xl md:hidden"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
           >
-            <ul className="mx-auto flex w-full max-w-md flex-col gap-2">
+            <ul className="flex flex-col gap-2">
               {navItems.map((item, i) => (
                 <motion.li
                   key={item.href}
@@ -108,18 +91,16 @@ export function Navbar() {
                   <a
                     href={item.href}
                     onClick={() => setOpen(false)}
-                    className="flex items-baseline gap-4 py-3 text-3xl font-semibold tracking-tight transition-colors hover:text-neon sm:text-4xl"
+                    className="flex items-baseline gap-4 py-3 text-4xl font-semibold tracking-tight"
                   >
-                    <span className="font-mono text-xs text-neon">
-                      {String(i + 1).padStart(2, '0')}
-                    </span>
+                    <span className="font-mono text-xs text-neon">0{i + 1}</span>
                     {item.label}
                   </a>
                 </motion.li>
               ))}
             </ul>
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
     </header>
   )
